@@ -23,6 +23,7 @@
     --mute: #8fa0c4;
     --go: #5fd39a;
     --late: #ff7a6b;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -47,7 +48,17 @@
   }
   .sub { color: var(--mute); font-size: 13.5px; line-height: 1.6; margin: 0; }
 
-  form { display: flex; gap: 8px; margin: 22px 0 6px; }
+  /* 조회 방식 탭 */
+  .tabs { display: flex; gap: 8px; margin: 22px 0 10px; }
+  .tab {
+    flex: 1; background: var(--ink-2); border: 1px solid var(--line);
+    color: var(--mute); border-radius: 10px; padding: 12px;
+    font-family: Pretendard, sans-serif; font-weight: 700; font-size: 14px;
+    cursor: pointer;
+  }
+  .tab.active { background: var(--sodium); color: #14203a; border-color: var(--sodium); }
+
+  form { display: flex; gap: 8px; margin: 0 0 6px; }
   input {
     flex: 1; min-width: 0;
     background: var(--ink-2);
@@ -61,6 +72,15 @@
   }
   input::placeholder { color: #55678d; letter-spacing: .1em; }
   input:focus { outline: 2px solid var(--sodium); outline-offset: 1px; }
+
+  /* 시간대 폼 */
+  .timeform { align-items: center; }
+  .timeform input[type="time"] {
+    text-transform: none; letter-spacing: normal;
+    font-size: 17px; text-align: center; padding: 14px 12px;
+  }
+  .dash { color: var(--mute); font-family: "IBM Plex Mono", monospace; flex: 0 0 auto; }
+
   button {
     background: var(--sodium); color: #14203a;
     border: 0; border-radius: 10px;
@@ -70,9 +90,49 @@
   button:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
   button:disabled { opacity: .5; cursor: default; }
 
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 2px 0; }
+  .chip {
+    background: var(--ink-2); border: 1px solid var(--line); color: var(--mute);
+    border-radius: 999px; padding: 8px 14px; font-size: 12.5px;
+    font-family: Pretendard, sans-serif; font-weight: 500; cursor: pointer;
+  }
+  .chip:hover { color: var(--paper); border-color: var(--mute); }
+
   .hint { color: var(--mute); font-size: 12px; margin: 10px 2px 0; }
 
+  .hidden { display: none !important; }
+
   #out { margin-top: 26px; }
+
+  /* 시간대 목록 */
+  .listhead { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 12px; }
+  .listhead .k { font-size: 11px; letter-spacing: .14em; color: var(--mute); text-transform: uppercase;
+                 font-family: "IBM Plex Mono", monospace; }
+  .listhead .cnt { color: var(--mute); font-size: 12.5px; font-family: "IBM Plex Mono", monospace; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .lrow {
+    display: grid; grid-template-columns: 60px 1fr auto; align-items: center; gap: 12px;
+    width: 100%; text-align: left;
+    background: var(--ink-2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; cursor: pointer; color: var(--paper);
+    font-weight: 500;
+  }
+  .lrow:hover { border-color: var(--mute); }
+  .lt { font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 600; color: var(--sodium); }
+  .lmid { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .lf { font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 600; letter-spacing: .04em; }
+  .lo { color: var(--mute); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lx {
+    font-family: "IBM Plex Mono", monospace; font-size: 26px; font-weight: 600; color: var(--sodium);
+    min-width: 42px; text-align: center;
+  }
+  .lx.none { font-size: 15px; color: var(--mute); }
+
+  .back {
+    background: none; border: 0; color: var(--sodium); font-size: 13px;
+    font-family: Pretendard, sans-serif; font-weight: 600;
+    padding: 0; margin: 0 0 14px; cursor: pointer;
+  }
 
   .card {
     border: 1px solid var(--line);
@@ -135,14 +195,32 @@
   <header>
     <div class="eyebrow">Incheon T1 / T2 · Arrivals</div>
     <h1>어느 출구로 나오나</h1>
-    <p class="sub">편명을 넣으면 인천공항 도착 정보를 그대로 가져옵니다. 수하물 벨트 번호로 출구를 짐작하지 않습니다.</p>
+    <p class="sub">편명이나 시간대로 인천공항 도착 정보를 그대로 가져옵니다. 수하물 벨트 번호로 출구를 짐작하지 않습니다.</p>
   </header>
+
+  <div class="tabs">
+    <button id="tabF" class="tab active" type="button">편명으로</button>
+    <button id="tabT" class="tab" type="button">시간대로</button>
+  </div>
 
   <form id="f">
     <input id="q" placeholder="VN414" autocomplete="off" autocapitalize="characters" spellcheck="false" />
     <button id="btn" type="submit">조회</button>
   </form>
-  <p class="hint">앞뒤 2시간 안에 도착하는 편만 나옵니다. 출구는 당일 배정이라 도착 직전에 바뀌기도 합니다.</p>
+
+  <form id="ft" class="timeform hidden">
+    <input type="time" id="tf" aria-label="시작 시각" />
+    <span class="dash">–</span>
+    <input type="time" id="tt" aria-label="끝 시각" />
+    <button id="btn2" type="submit">조회</button>
+  </form>
+  <div id="chips" class="chips hidden">
+    <button type="button" class="chip" data-mins="60">지금부터 +1시간</button>
+    <button type="button" class="chip" data-mins="120">지금부터 +2시간</button>
+  </div>
+
+  <p class="hint" id="hintF">앞뒤 2시간 안에 도착하는 편만 나옵니다. 출구는 당일 배정이라 도착 직전에 바뀌기도 합니다.</p>
+  <p class="hint hidden" id="hintT">지금 기준 앞뒤 약 2시간의 도착편만 조회됩니다. 시간대는 한국 시간(KST) 기준이며, 항목을 누르면 상세가 열립니다.</p>
 
   <div id="out"></div>
 
@@ -155,7 +233,10 @@
 <script>
 const out = document.getElementById("out");
 const btn = document.getElementById("btn");
+const btn2 = document.getElementById("btn2");
 const q = document.getElementById("q");
+const tf = document.getElementById("tf");
+const tt = document.getElementById("tt");
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
@@ -165,6 +246,19 @@ function statusClass(s) {
   if (/도착|Arrived/i.test(s)) return "go";
   if (/지연|결항|회항|Delay|Cancel/i.test(s)) return "late";
   return "";
+}
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function toMin(t) { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function minToHM(x) { x = ((x % 1440) + 1440) % 1440; return pad(Math.floor(x / 60)) + ":" + pad(x % 60); }
+
+// 한국 시간(KST) 기준 현재 시각을 분 단위로
+function kstMinutes() {
+  const s = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date());
+  const [h, m] = s.split(":").map(Number);
+  return h * 60 + m;
 }
 
 function card(r) {
@@ -198,6 +292,7 @@ function card(r) {
   </div>`;
 }
 
+// ── 편명 조회 ──
 document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
   const flight = q.value.trim();
@@ -225,6 +320,107 @@ document.getElementById("f").addEventListener("submit", async (e) => {
     btn.disabled = false;
   }
 });
+
+// ── 시간대 조회 ──
+let curRows = [];
+
+function lrow(r, i) {
+  const exit = (r.exit || "").trim();
+  const known = /^[A-F]$/i.test(exit);
+  const at = r.estimatedText || r.scheduledText || "—";
+  const term = r.terminal ? ` · 제${r.terminal}터미널` : "";
+  return `<button class="lrow" type="button" data-i="${i}">
+    <span class="lt">${esc(at)}</span>
+    <span class="lmid"><span class="lf">${esc(r.flightId)}</span><span class="lo">${esc(r.origin || "")} → 인천${esc(term)}</span></span>
+    <span class="lx${known ? "" : " none"}">${known ? esc(exit) : "—"}</span>
+  </button>`;
+}
+
+function renderList(rows) {
+  curRows = rows;
+  if (!rows.length) {
+    out.innerHTML = `<div class="msg"><strong>해당 시간대에 도착하는 편이 없습니다.</strong><br />이 조회는 지금 기준 앞뒤 약 2시간 안에 도착하는 편만 담습니다. 시간대를 지금과 가깝게 잡아 보세요.</div>`;
+    return;
+  }
+  out.innerHTML =
+    `<div class="listhead"><span class="k">Arrivals</span><span class="cnt">${rows.length}편</span></div>` +
+    `<div class="list">${rows.map(lrow).join("")}</div>`;
+  out.querySelectorAll(".lrow").forEach((b) => {
+    b.addEventListener("click", () => {
+      const r = curRows[+b.dataset.i];
+      out.innerHTML = `<button class="back" type="button">← 목록으로</button>` + card(r);
+      out.querySelector(".back").addEventListener("click", () => renderList(curRows));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+}
+
+document.getElementById("ft").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fromM = toMin(tf.value), toM = toMin(tt.value);
+  if (fromM == null || toM == null) { return; }
+
+  btn2.disabled = true;
+  out.innerHTML = `<div class="msg">불러오는 중…</div>`;
+
+  try {
+    const res = await fetch(`/api/arrival`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      out.innerHTML = `<div class="msg"><strong>조회하지 못했습니다.</strong><br />${esc(data.error || "")}<br />${esc(data.hint || data.detail || "")}</div>`;
+      return;
+    }
+    let rows = (data.rows || []).filter((r) => {
+      const m = toMin(r.estimatedText || r.scheduledText);
+      if (m == null) return false;
+      return fromM <= toM ? (m >= fromM && m <= toM) : (m >= fromM || m <= toM);
+    });
+    rows.sort((a, b) => toMin(a.estimatedText || a.scheduledText) - toMin(b.estimatedText || b.scheduledText));
+    renderList(rows);
+  } catch (err) {
+    out.innerHTML = `<div class="msg"><strong>연결에 실패했습니다.</strong><br />${esc(err)}</div>`;
+  } finally {
+    btn2.disabled = false;
+  }
+});
+
+document.querySelectorAll(".chip").forEach((c) => {
+  c.addEventListener("click", () => {
+    const base = kstMinutes();
+    tf.value = minToHM(base);
+    tt.value = minToHM(base + (+c.dataset.mins));
+    document.getElementById("ft").requestSubmit();
+  });
+});
+
+// ── 탭 전환 ──
+const tabF = document.getElementById("tabF");
+const tabT = document.getElementById("tabT");
+const formF = document.getElementById("f");
+const formT = document.getElementById("ft");
+const chips = document.getElementById("chips");
+const hintF = document.getElementById("hintF");
+const hintT = document.getElementById("hintT");
+
+function setTab(t) {
+  const isF = t === "f";
+  tabF.classList.toggle("active", isF);
+  tabT.classList.toggle("active", !isF);
+  formF.classList.toggle("hidden", !isF);
+  formT.classList.toggle("hidden", isF);
+  chips.classList.toggle("hidden", isF);
+  hintF.classList.toggle("hidden", !isF);
+  hintT.classList.toggle("hidden", isF);
+  out.innerHTML = "";
+  if (!isF && !tt.value) {
+    const b = kstMinutes();
+    tf.value = minToHM(b);
+    tt.value = minToHM(b + 120);
+  }
+}
+tabF.addEventListener("click", () => setTab("f"));
+tabT.addEventListener("click", () => setTab("t"));
 </script>
 </body>
 </html>
