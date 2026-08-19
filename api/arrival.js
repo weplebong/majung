@@ -8,6 +8,9 @@
 const BASE =
   "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsDeOdp/getPassengerArrivalsDeOdp";
 
+const PAGE_SIZE = 500;
+const MAX_PAGES = 20; // 안전장치: 최대 10,000건
+
 // 공공데이터 응답의 키 표기가 문서와 다를 때가 있어 후보를 여러 개 둡니다.
 const FIELDS = {
   flightId: ["flightId", "flight_id", "flightid"],
@@ -63,6 +66,81 @@ function flightKey(v) {
   return m ? `${m[1]}${m[2]}` : s;
 }
 
+// Asia/Seoul 기준 날짜/시각 파트. 서버는 UTC 로 도는 경우가 많아 new Date() 를
+// 그대로 쓰면 안 되고 타임존 변환이 필요합니다.
+function kstParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const o = {};
+  for (const p of parts) if (p.type !== "literal") o[p.type] = p.value;
+  return o;
+}
+
+// yyyyMMddHHmm (API 의 scheduleDatetime 표기와 동일한 12자리 형식)
+function fmt12(parts) {
+  return `${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}`;
+}
+
+function dayOf(v) {
+  return (v || "").slice(0, 8);
+}
+
+class UpstreamParseError extends Error {
+  constructor(detail) {
+    super("UPSTREAM_NOT_JSON");
+    this.detail = detail;
+  }
+}
+
+async function fetchPage(baseParams, pageNo) {
+  const params = new URLSearchParams(baseParams);
+  params.set("pageNo", String(pageNo));
+  const url = `${BASE}?${params.toString()}`;
+
+  const upstream = await fetch(url, { headers: { Accept: "application/json" } });
+  const text = await upstream.text();
+
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // 인증 실패 등은 XML 로 돌아옵니다.
+    throw new UpstreamParseError(text.slice(0, 500));
+  }
+
+  const body = json?.response?.body ?? json?.body ?? {};
+  let items = body?.items ?? [];
+  if (items && items.item) items = items.item;
+  if (!Array.isArray(items)) items = items ? [items] : [];
+
+  const totalCount = Number(body?.totalCount ?? items.length) || items.length;
+  return { items, totalCount };
+}
+
+// numOfRows(500) 한 페이지로 잘리지 않도록 totalCount 를 보고 필요한 만큼 더 받아옵니다.
+async function fetchAll(baseParams) {
+  const all = [];
+  let pageNo = 1;
+  let totalCount = Infinity;
+
+  while (all.length < totalCount && pageNo <= MAX_PAGES) {
+    const { items, totalCount: tc } = await fetchPage(baseParams, pageNo);
+    totalCount = tc;
+    if (items.length === 0) break;
+    all.push(...items);
+    pageNo += 1;
+  }
+
+  return all;
+}
+
 export default async function handler(req, res) {
   const key = process.env.ODP_SERVICE_KEY;
   if (!key) {
@@ -72,46 +150,46 @@ export default async function handler(req, res) {
     });
   }
 
+  const now = new Date();
   const { flight = "", from = "", to = "", terminal = "" } = req.query;
 
-  const params = new URLSearchParams({
-    serviceKey: key,
-    type: "json",
-    numOfRows: "500",
-    pageNo: "1",
-    lang: "K",
-  });
-  if (from) params.set("from_time", from);
-  if (to) params.set("to_time", to);
-  if (terminal) params.set("terminal_id", terminal);
+  // 기본값: Asia/Seoul 기준 지금부터 3시간 뒤까지. 쿼리로 명시하면 그대로 존중.
+  const queryFrom = from || fmt12(kstParts(now));
+  const queryTo = to || fmt12(kstParts(new Date(now.getTime() + 3 * 60 * 60 * 1000)));
 
-  const url = `${BASE}?${params.toString()}`;
+  // 자정을 넘는 구간이면 오늘치/내일치로 나눠 각각 호출 후 합칩니다.
+  const ranges =
+    dayOf(queryFrom) === dayOf(queryTo)
+      ? [{ from: queryFrom, to: queryTo }]
+      : [
+          { from: queryFrom, to: `${dayOf(queryFrom)}2359` },
+          { from: `${dayOf(queryTo)}0000`, to: queryTo },
+        ];
 
   try {
-    const upstream = await fetch(url, { headers: { Accept: "application/json" } });
-    const text = await upstream.text();
+    const rawBatches = await Promise.all(
+      ranges.map((r) => {
+        const baseParams = {
+          serviceKey: key,
+          type: "json",
+          numOfRows: String(PAGE_SIZE),
+          lang: "K",
+          from_time: r.from,
+          to_time: r.to,
+        };
+        if (terminal) baseParams.terminal_id = terminal;
+        return fetchAll(baseParams);
+      })
+    );
 
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      // 인증 실패 등은 XML 로 돌아옵니다.
-      return res.status(502).json({
-        error: "응답을 JSON 으로 읽지 못했습니다.",
-        detail: text.slice(0, 500),
-      });
-    }
-
-    const body = json?.response?.body ?? json?.body ?? {};
-    let items = body?.items ?? [];
-    if (items && items.item) items = items.item;
-    if (!Array.isArray(items)) items = items ? [items] : [];
-
-    let rows = items.map(normalize).map((r) => ({
-      ...r,
-      scheduledText: hhmm(r.scheduled),
-      estimatedText: hhmm(r.estimated),
-    }));
+    let rows = rawBatches
+      .flat()
+      .map(normalize)
+      .map((r) => ({
+        ...r,
+        scheduledText: hhmm(r.scheduled),
+        estimatedText: hhmm(r.estimated),
+      }));
 
     if (flight) {
       const want = flightKey(flight);
@@ -120,9 +198,21 @@ export default async function handler(req, res) {
       );
     }
 
-    res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=60");
-    return res.status(200).json({ count: rows.length, rows });
+    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=30");
+    return res.status(200).json({
+      fetchedAt: now.toISOString(),
+      queriedFrom: queryFrom,
+      queriedTo: queryTo,
+      count: rows.length,
+      rows,
+    });
   } catch (err) {
+    if (err instanceof UpstreamParseError) {
+      return res.status(502).json({
+        error: "응답을 JSON 으로 읽지 못했습니다.",
+        detail: err.detail,
+      });
+    }
     return res.status(502).json({ error: "공공데이터포털 호출 실패", detail: String(err) });
   }
 }
