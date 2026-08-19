@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>어느 출구로 나오나 — 인천공항 도착편</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link
+  href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
+  rel="stylesheet"
+/>
+<link
+  href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --ink: #0a1730;        /* 도착 안내판 남색 */
+    --ink-2: #132549;
+    --line: #24365f;
+    --sodium: #ffc247;     /* 나트륨등 노랑 — 안내판 글자색 */
+    --paper: #e8edf7;
+    --mute: #8fa0c4;
+    --go: #5fd39a;
+    --late: #ff7a6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: Pretendard, system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 20px 16px 56px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+
+  header { padding: 8px 0 22px; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--mute);
+  }
+  h1 {
+    font-size: 27px; line-height: 1.25; margin: 8px 0 6px;
+    font-weight: 800; letter-spacing: -.02em;
+  }
+  .sub { color: var(--mute); font-size: 13.5px; line-height: 1.6; margin: 0; }
+
+  form { display: flex; gap: 8px; margin: 22px 0 6px; }
+  input {
+    flex: 1; min-width: 0;
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--paper);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 19px; letter-spacing: .1em;
+    padding: 15px 16px;
+    text-transform: uppercase;
+  }
+  input::placeholder { color: #55678d; letter-spacing: .1em; }
+  input:focus { outline: 2px solid var(--sodium); outline-offset: 1px; }
+  button {
+    background: var(--sodium); color: #14203a;
+    border: 0; border-radius: 10px;
+    font-weight: 800; font-size: 15px;
+    padding: 0 22px; cursor: pointer;
+  }
+  button:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  .hint { color: var(--mute); font-size: 12px; margin: 10px 2px 0; }
+
+  #out { margin-top: 26px; }
+
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--ink-2);
+    margin-bottom: 14px;
+  }
+
+  /* 시그니처: 마중 나간 사람이 알아야 할 단 하나 — 출구 글자 */
+  .exit {
+    display: flex; align-items: center; gap: 18px;
+    padding: 22px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .exit-letter {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 76px; line-height: .82; font-weight: 600;
+    color: var(--sodium);
+    min-width: 92px; text-align: center;
+    border: 2px solid var(--sodium); border-radius: 12px;
+    padding: 14px 8px 12px;
+  }
+  .exit-letter.unknown { font-size: 30px; padding: 34px 8px; color: var(--mute); border-color: var(--line); }
+  .exit-label { font-size: 13px; color: var(--mute); letter-spacing: .04em; }
+  .exit-note { font-size: 15px; margin-top: 6px; line-height: 1.5; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .cell { padding: 15px 20px; border-top: 1px solid var(--line); }
+  .cell:nth-child(odd) { border-right: 1px solid var(--line); }
+  .k { font-size: 11px; letter-spacing: .14em; color: var(--mute); text-transform: uppercase;
+       font-family: "IBM Plex Mono", monospace; }
+  .v { font-size: 21px; margin-top: 5px; font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+  .v.small { font-size: 15px; font-family: Pretendard, sans-serif; font-weight: 500; }
+  .go { color: var(--go); }
+  .late { color: var(--late); }
+
+  .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 16px 20px 14px;
+  }
+  .fno { font-family: "IBM Plex Mono", monospace; font-size: 22px; font-weight: 600; letter-spacing: .06em; }
+  .from { color: var(--mute); font-size: 14px; }
+
+  .msg { padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px;
+         color: var(--mute); font-size: 14px; line-height: 1.65; }
+  .msg strong { color: var(--paper); }
+
+  footer { margin-top: 30px; color: #6a7ca3; font-size: 11.5px; line-height: 1.7; }
+  footer a { color: #8fa0c4; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .card { animation: rise .28s ease-out both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Incheon T1 / T2 · Arrivals</div>
+    <h1>어느 출구로 나오나</h1>
+    <p class="sub">편명을 넣으면 인천공항 도착 정보를 그대로 가져옵니다. 수하물 벨트 번호로 출구를 짐작하지 않습니다.</p>
+  </header>
+
+  <form id="f">
+    <input id="q" placeholder="VN414" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+    <button id="btn" type="submit">조회</button>
+  </form>
+  <p class="hint">앞뒤 2시간 안에 도착하는 편만 나옵니다. 출구는 당일 배정이라 도착 직전에 바뀌기도 합니다.</p>
+
+  <div id="out"></div>
+
+  <footer>
+    출처: 공공데이터포털 인천국제공항공사 여객기 실시간 도착 현황.<br />
+    항공편 정보는 공항 운영 상황에 따라 바뀔 수 있습니다.
+  </footer>
+</div>
+
+<script>
+const out = document.getElementById("out");
+const btn = document.getElementById("btn");
+const q = document.getElementById("q");
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+}
+
+function statusClass(s) {
+  if (/도착|Arrived/i.test(s)) return "go";
+  if (/지연|결항|회항|Delay|Cancel/i.test(s)) return "late";
+  return "";
+}
+
+function card(r) {
+  const exit = r.exit || "";
+  const known = /^[A-F]$/i.test(exit.trim());
+  const terminal = r.terminal ? `제${r.terminal}여객터미널` : "—";
+
+  return `
+  <div class="card">
+    <div class="head">
+      <span class="fno">${esc(r.flightId)}</span>
+      <span class="from">${esc(r.origin || "")} → 인천</span>
+    </div>
+    <div class="exit">
+      <div class="exit-letter${known ? "" : " unknown"}">${known ? esc(exit) : "미배정"}</div>
+      <div>
+        <div class="exit-label">입국장 출구</div>
+        <div class="exit-note">${known
+          ? `${esc(terminal)} <b>${esc(exit)} 출구</b> 앞에서 기다리세요.`
+          : "아직 출구가 배정되지 않았습니다. 도착 30분 전쯤 다시 조회하세요."}</div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="cell"><div class="k">Scheduled</div><div class="v">${esc(r.scheduledText || "—")}</div></div>
+      <div class="cell"><div class="k">Estimated</div><div class="v">${esc(r.estimatedText || "—")}</div></div>
+      <div class="cell"><div class="k">Baggage</div><div class="v">${esc(r.carousel || "—")}</div></div>
+      <div class="cell"><div class="k">Gate</div><div class="v">${esc(r.gate || "—")}</div></div>
+      <div class="cell"><div class="k">Terminal</div><div class="v small">${esc(terminal)}</div></div>
+      <div class="cell"><div class="k">Status</div><div class="v small ${statusClass(r.status)}">${esc(r.status || "—")}</div></div>
+    </div>
+  </div>`;
+}
+
+document.getElementById("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const flight = q.value.trim();
+  if (!flight) { q.focus(); return; }
+
+  btn.disabled = true;
+  out.innerHTML = `<div class="msg">불러오는 중…</div>`;
+
+  try {
+    const res = await fetch(`/api/arrival?flight=${encodeURIComponent(flight)}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      out.innerHTML = `<div class="msg"><strong>조회하지 못했습니다.</strong><br />${esc(data.error || "")}<br />${esc(data.hint || data.detail || "")}</div>`;
+      return;
+    }
+    if (!data.rows.length) {
+      out.innerHTML = `<div class="msg"><strong>${esc(flight)} 편이 목록에 없습니다.</strong><br />이 조회는 지금 기준 앞뒤 2시간 안에 도착하는 편만 담습니다. 도착이 아직 멀었다면 시간이 가까워진 뒤 다시 조회하세요. 편명 철자도 한 번 확인해 주세요.</div>`;
+      return;
+    }
+    out.innerHTML = data.rows.map(card).join("");
+  } catch (err) {
+    out.innerHTML = `<div class="msg"><strong>연결에 실패했습니다.</strong><br />${esc(err)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
