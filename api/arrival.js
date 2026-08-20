@@ -4,12 +4,22 @@
 // 서비스키도 프론트에 노출되면 안 되므로 서버에서 대신 호출합니다.
 //
 // 환경변수: ODP_SERVICE_KEY (공공데이터포털 일반 인증키 Decoding 값)
+//
+// 실사로 확인된 사실 (2026-08-20):
+// - 이 API 는 from_time/to_time 을 실제로 필터링하지 않습니다. 무엇을 넣어도
+//   조회일 기준 D-3~D+6 전체(약 10일치, 1만 건 가까이)를 그대로 돌려주고,
+//   scheduleDatetime 오름차순으로 정렬돼 있습니다.
+// - 그래서 우리가 원하는 시간대는 서버(이 프록시)에서 걸러내야 합니다.
+//   전체를 다 받으면 페이지당 500건이라 매 요청마다 최대 20번씩 상위 API를
+//   불러야 하고, 정보나루 계정의 하루 호출 한도를 금방 소진합니다.
+//   대신 오름차순 정렬을 이용해 날짜 경계를 이진 탐색으로 찾고, 그 지점부터만
+//   순차로 읽어 목표 구간을 벗어나면 바로 멈춥니다.
 
 const BASE =
   "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsDeOdp/getPassengerArrivalsDeOdp";
 
 const PAGE_SIZE = 500;
-const MAX_PAGES = 20; // 안전장치: 최대 10,000건
+const MAX_SCAN_PAGES = 8; // 목표 구간을 벗어나면 즉시 멈추므로 안전장치 성격
 
 // 공공데이터 응답의 키 표기가 문서와 다를 때가 있어 후보를 여러 개 둡니다.
 const FIELDS = {
@@ -124,21 +134,60 @@ async function fetchPage(baseParams, pageNo) {
   return { items, totalCount };
 }
 
-// numOfRows(500) 한 페이지로 잘리지 않도록 totalCount 를 보고 필요한 만큼 더 받아옵니다.
-async function fetchAll(baseParams) {
-  const all = [];
-  let pageNo = 1;
-  let totalCount = Infinity;
+const rowDay = (row) => dayOf(pick(row, FIELDS.scheduled));
 
-  while (all.length < totalCount && pageNo <= MAX_PAGES) {
-    const { items, totalCount: tc } = await fetchPage(baseParams, pageNo);
-    totalCount = tc;
-    if (items.length === 0) break;
-    all.push(...items);
-    pageNo += 1;
+// scheduleDatetime 오름차순 정렬을 전제로, [startDay, endDay] 구간의 원본 행만
+// 모아서 반환합니다. 목표 구간 앞부분은 이진 탐색으로 건너뛰고, 구간을 벗어나는
+// 순간 바로 멈춰서 상위 API 호출 횟수를 최소화합니다.
+async function fetchWindow(baseParams, startDay, endDay) {
+  const first = await fetchPage(baseParams, 1);
+  if (first.items.length === 0) return [];
+
+  const totalPages = Math.max(1, Math.ceil(first.totalCount / PAGE_SIZE));
+  const cache = new Map([[1, first.items]]);
+  const pageItems = async (p) => {
+    if (!cache.has(p)) {
+      const r = await fetchPage(baseParams, p);
+      cache.set(p, r.items);
+    }
+    return cache.get(p);
+  };
+
+  let lo = 1;
+  let hi = totalPages;
+  let startPage = totalPages;
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const items = await pageItems(mid);
+    if (!items.length) {
+      hi = mid - 1;
+      continue;
+    }
+    if (rowDay(items[0]) >= startDay) {
+      startPage = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
   }
 
-  return all;
+  const collected = [];
+  const scanLimit = Math.min(totalPages, startPage + MAX_SCAN_PAGES);
+  for (let p = startPage; p <= scanLimit; p++) {
+    const items = await pageItems(p);
+    if (!items.length) break;
+    let pastEnd = false;
+    for (const row of items) {
+      const d = rowDay(row);
+      if (d > endDay) {
+        pastEnd = true;
+        break;
+      }
+      if (d >= startDay) collected.push(row);
+    }
+    if (pastEnd) break;
+  }
+  return collected;
 }
 
 export default async function handler(req, res) {
@@ -157,39 +206,28 @@ export default async function handler(req, res) {
   const queryFrom = from || fmt12(kstParts(now));
   const queryTo = to || fmt12(kstParts(new Date(now.getTime() + 3 * 60 * 60 * 1000)));
 
-  // 자정을 넘는 구간이면 오늘치/내일치로 나눠 각각 호출 후 합칩니다.
-  const ranges =
-    dayOf(queryFrom) === dayOf(queryTo)
-      ? [{ from: queryFrom, to: queryTo }]
-      : [
-          { from: queryFrom, to: `${dayOf(queryFrom)}2359` },
-          { from: `${dayOf(queryTo)}0000`, to: queryTo },
-        ];
+  const baseParams = {
+    serviceKey: key,
+    type: "json",
+    numOfRows: String(PAGE_SIZE),
+    lang: "K",
+  };
+  if (terminal) baseParams.terminal_id = terminal;
 
   try {
-    const rawBatches = await Promise.all(
-      ranges.map((r) => {
-        const baseParams = {
-          serviceKey: key,
-          type: "json",
-          numOfRows: String(PAGE_SIZE),
-          lang: "K",
-          from_time: r.from,
-          to_time: r.to,
-        };
-        if (terminal) baseParams.terminal_id = terminal;
-        return fetchAll(baseParams);
-      })
-    );
+    const raw = await fetchWindow(baseParams, dayOf(queryFrom), dayOf(queryTo));
 
-    let rows = rawBatches
-      .flat()
+    let rows = raw
       .map(normalize)
       .map((r) => ({
         ...r,
         scheduledText: hhmm(r.scheduled),
         estimatedText: hhmm(r.estimated),
-      }));
+      }))
+      .filter((r) => {
+        const t = r.estimated || r.scheduled;
+        return t && t >= queryFrom && t <= queryTo;
+      });
 
     if (flight) {
       const want = flightKey(flight);
