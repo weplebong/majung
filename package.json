@@ -1,0 +1,9 @@
+{
+  "name": "majung",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mcp-handler": "^1.1.0",
+    "zod": "^3.25.76"
+  }
+}
