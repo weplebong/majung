@@ -21,7 +21,8 @@ function errorResult(err) {
   };
 }
 
-const handler = createMcpHandler((server) => {
+const handler = createMcpHandler(
+  (server) => {
   server.tool(
     "searchArrivalByFlight",
     "인천공항에 도착하는 특정 항공편의 입국장 출구(A~F), 수하물 수취대 번호, 터미널, 예정/변경 도착시각, 운항상태를 조회한다. 마중 나갈 때 어느 출구 앞에서 기다려야 하는지 알고 싶을 때 사용한다. 편명을 알고 있을 때 쓴다.",
@@ -84,6 +85,9 @@ const handler = createMcpHandler((server) => {
       }
     }
   );
-});
+  },
+  { serverInfo: { name: "majung-arrivals", version: "1.0.0" } },
+  { basePath: "/api" }
+);
 
 export { handler as GET, handler as POST, handler as DELETE };
