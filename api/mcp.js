@@ -52,7 +52,7 @@ const handler = createMcpHandler(
 
   server.tool(
     "listUpcomingArrivals",
-    "현재 시각 기준으로 곧 인천공항에 도착하는 항공편 목록을 조회한다. 편명을 모를 때, 또는 특정 도시에서 오는 편을 찾을 때 사용한다.",
+    "현재 시각 기준으로 곧 인천공항에 도착하는 항공편 목록을 조회한다. 편명을 모를 때, 또는 특정 도시에서 오는 편을 찾을 때 사용한다. 항공사로도 필터링할 수 있다.",
     {
       withinMinutes: z
         .number()
@@ -63,8 +63,12 @@ const handler = createMcpHandler(
         .describe("지금부터 몇 분 안에 도착하는 편까지 볼지. 기본 120."),
       origin: z.string().optional().describe('출발지 도시명 부분일치. 예: "도쿄", "홍콩".'),
       terminal: z.enum(["T1", "T2"]).optional().describe("터미널로 필터링."),
+      airline: z
+        .string()
+        .optional()
+        .describe('항공사명 부분일치 또는 편명 접두어. 예: "대한항공", "KE".'),
     },
-    async ({ withinMinutes, origin, terminal }) => {
+    async ({ withinMinutes, origin, terminal, airline }) => {
       const key = process.env.ODP_SERVICE_KEY;
       if (!key) return noKeyResult();
       try {
@@ -73,10 +77,20 @@ const handler = createMcpHandler(
           withinMinutes: withinMinutes ?? 120,
           origin,
           terminal,
+          airline,
         });
         if (!rows.length) {
+          const cond = [`withinMinutes=${withinMinutes ?? 120}`];
+          if (origin) cond.push(`origin="${origin}"`);
+          if (terminal) cond.push(`terminal=${terminal}`);
+          if (airline) cond.push(`airline="${airline}"`);
           return {
-            content: [{ type: "text", text: "해당 조건에 맞는 도착편을 찾을 수 없습니다." }],
+            content: [
+              {
+                type: "text",
+                text: `해당 조건(${cond.join(", ")})에 맞는 도착편을 찾을 수 없습니다. withinMinutes를 늘리면 나올 수 있습니다.`,
+              },
+            ],
           };
         }
         return { content: [{ type: "text", text: JSON.stringify(rows.map(toMcpRow), null, 2) }] };
