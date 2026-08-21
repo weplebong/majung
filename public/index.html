@@ -170,6 +170,20 @@
   .go { color: var(--go); }
   .late { color: var(--late); }
 
+  .delay-badge {
+    display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600;
+    font-family: Pretendard, sans-serif;
+  }
+  .delay-badge.late { color: var(--late); }
+  .delay-badge.go { color: var(--go); }
+  .delay-badge.onTime { color: var(--mute); font-weight: 500; }
+
+  .lt-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .lt-was {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--mute);
+    text-decoration: line-through;
+  }
+
   .head {
     display: flex; justify-content: space-between; align-items: baseline;
     padding: 16px 20px 14px;
@@ -248,6 +262,14 @@ function statusClass(s) {
   return "";
 }
 
+// delayMinutes: 실제도착시각 - 예정시각(분). 양수=지연, 음수=조기, 0=정시.
+function delayBadge(delayMinutes) {
+  const n = Number(delayMinutes) || 0;
+  if (n > 0) return `<span class="delay-badge late">${n}분 지연</span>`;
+  if (n < 0) return `<span class="delay-badge go">${-n}분 조기</span>`;
+  return `<span class="delay-badge onTime">정시</span>`;
+}
+
 function pad(n) { return String(n).padStart(2, "0"); }
 function toMin(t) { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? (+m[1]) * 60 + (+m[2]) : null; }
 function minToHM(x) { x = ((x % 1440) + 1440) % 1440; return pad(Math.floor(x / 60)) + ":" + pad(x % 60); }
@@ -283,7 +305,7 @@ function card(r) {
     </div>
     <div class="grid">
       <div class="cell"><div class="k">Scheduled</div><div class="v">${esc(r.scheduledText || "—")}</div></div>
-      <div class="cell"><div class="k">Estimated</div><div class="v">${esc(r.estimatedText || "—")}</div></div>
+      <div class="cell"><div class="k">Estimated</div><div class="v">${esc(r.estimatedText || "—")}</div>${r.estimatedText ? delayBadge(r.delayMinutes) : ""}</div>
       <div class="cell"><div class="k">Baggage</div><div class="v">${esc(r.carousel || "—")}</div></div>
       <div class="cell"><div class="k">Gate</div><div class="v">${esc(r.gate || "—")}</div></div>
       <div class="cell"><div class="k">Terminal</div><div class="v small">${esc(terminal)}</div></div>
@@ -327,10 +349,14 @@ let curRows = [];
 function lrow(r, i) {
   const exit = (r.exit || "").trim();
   const known = /^[A-F]$/i.test(exit);
-  const at = r.estimatedText || r.scheduledText || "—";
+  const at = r.actualText || "—";
+  const changed = r.estimatedText && r.scheduledText && r.estimatedText !== r.scheduledText;
   const term = r.terminal ? ` · 제${r.terminal}터미널` : "";
   return `<button class="lrow" type="button" data-i="${i}">
-    <span class="lt">${esc(at)}</span>
+    <span class="lt-wrap">
+      <span class="lt">${esc(at)}</span>
+      ${changed ? `<span class="lt-was">${esc(r.scheduledText)}</span>` : ""}
+    </span>
     <span class="lmid"><span class="lf">${esc(r.flightId)}</span><span class="lo">${esc(r.origin || "")} → 인천${esc(term)}</span></span>
     <span class="lx${known ? "" : " none"}">${known ? esc(exit) : "—"}</span>
   </button>`;
